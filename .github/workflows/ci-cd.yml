@@ -1,0 +1,53 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [develop]
+
+env:
+  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/api-model
+
+jobs:
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        run: |
+          docker build -t ${{ env.IMAGE }}:${{ github.sha }} -t ${{ env.IMAGE }}:latest .
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pull and run container on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker pull ${{ env.IMAGE }}:${{ github.sha }}
+            docker stop cancer-api || true
+            docker rm   cancer-api || true
+            docker run -d \
+              --name cancer-api \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              -e MODEL_PATH="model/modelo_cancer_v1.joblib" \
+              ${{ env.IMAGE }}:${{ github.sha }}
+            docker image prune -f
