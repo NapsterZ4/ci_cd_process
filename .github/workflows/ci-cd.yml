@@ -24,8 +24,7 @@ jobs:
 
       - name: Build and push
         run: |
-          docker build -t ${{ env.IMAGE }}:${{ github.sha }} -t ${{ env.IMAGE }}:latest .
-          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker build -t ${{ env.IMAGE }}:latest .
           docker push ${{ env.IMAGE }}:latest
 
   deploy:
@@ -41,13 +40,13 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            docker pull ${{ env.IMAGE }}:${{ github.sha }}
-            docker stop cancer-api || true
-            docker rm   cancer-api || true
-            docker run -d \
+            sudo docker pull ${{ env.IMAGE }}:latest
+            sudo docker stop cancer-api || true
+            sudo docker rm   cancer-api || true
+            sudo docker run -d \
               --name cancer-api \
               --restart unless-stopped \
               -p 8000:8000 \
               -e MODEL_PATH="model/modelo_cancer_v1.joblib" \
-              ${{ env.IMAGE }}:${{ github.sha }}
-            docker image prune -f
+              ${{ env.IMAGE }}:latest
+            sudo docker image prune -f
