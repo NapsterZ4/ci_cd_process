@@ -8,13 +8,51 @@ env:
   IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/api-model
 
 jobs:
+  retrain:
+    name: Retrain model
+    runs-on: ubuntu-latest
+
+    outputs:
+      accuracy: ${{ steps.train.outputs.accuracy }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install .
+
+      - name: Retrain model
+        id: train
+        run: python retrain.py --data-path data/dataset_cancer.csv --model-dir model --min-accuracy 0.80
+
+      - name: Upload model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model
+          path: |
+            model/modelo_cancer_v1.joblib
+            model/metrics.json
+
   build:
     name: Build and push image
+    needs: retrain
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download trained model
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-model
+          path: model
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -27,26 +65,26 @@ jobs:
           docker build -t ${{ env.IMAGE }}:latest .
           docker push ${{ env.IMAGE }}:latest
 
-  deploy:
-    name: Deploy to EC2
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Pull and run container on EC2
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            sudo docker pull ${{ env.IMAGE }}:latest
-            sudo docker stop cancer-api || true
-            sudo docker rm   cancer-api || true
-            sudo docker run -d \
-              --name cancer-api \
-              --restart unless-stopped \
-              -p 8000:8000 \
-              -e MODEL_PATH="model/modelo_cancer_v1.joblib" \
-              ${{ env.IMAGE }}:latest
-            sudo docker image prune -f
+#  deploy:
+#    name: Deploy to EC2
+#    needs: build
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      - name: Pull and run container on EC2
+#        uses: appleboy/ssh-action@v1
+#        with:
+#          host: ${{ secrets.EC2_HOST }}
+#          username: ${{ secrets.EC2_USER }}
+#          key: ${{ secrets.EC2_SSH_KEY }}
+#          script: |
+#            sudo docker pull ${{ env.IMAGE }}:latest
+#            sudo docker stop cancer-api || true
+#            sudo docker rm   cancer-api || true
+#            sudo docker run -d \
+#              --name cancer-api \
+#              --restart unless-stopped \
+#              -p 8000:8000 \
+#              -e MODEL_PATH="model/modelo_cancer_v1.joblib" \
+#              ${{ env.IMAGE }}:latest
+#            sudo docker image prune -f
