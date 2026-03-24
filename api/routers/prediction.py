@@ -1,11 +1,24 @@
+from sys import prefix
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from fastapi import status
 from api.schemas.prediction import PredictionRequest, PredictionResponse
-from api.services.model_service import model_service
+from api.utilities.s3_storage import S3ModelStorage
+from api.services.model_service import ModelService
 
 router = APIRouter(prefix="/predict", tags=["Prediccion"])
 
+
+s3_client = S3ModelStorage(
+    bucket="general-mlops-versioning",
+    prefix="/"
+)
+model_service = ModelService(
+    s3_client=s3_client,
+    model_name="modelo_cancer_v1.joblib",
+    local_path="/tmp/modelo_cancer_v1.joblib"
+)
 
 @router.post("/", response_model=PredictionResponse)
 def predict(request: PredictionRequest) -> PredictionResponse:
