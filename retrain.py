@@ -1,22 +1,7 @@
-"""
-retrain.py - Reentrenamiento automatico del modelo de clasificacion de cancer de mama.
-
-Uso:
-    python retrain.py [--data-path DATA] [--model-dir MODEL] [--min-accuracy 0.80]
-
-Salidas:
-    - model/modelo_cancer_v1.joblib   (modelo serializado)
-    - model/metrics.json              (metricas para CI/CD)
-"""
-
 import argparse
-import json
 import logging
 import os
 import sys
-from pathlib import Path
-
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
@@ -33,6 +18,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import GridSearchCV, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from api.utilities.s3_storage import S3ModelStorage
 
 # --- Logger -------------------------------------------------------------------
 logging.basicConfig(
@@ -209,19 +195,27 @@ def set_github_output(metrics):
 # --- Main ---------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(description="Reentrenamiento del modelo de cancer de mama")
-    parser.add_argument("--data-path", default="data/dataset_cancer.csv")
-    parser.add_argument("--model-dir", default="model")
+    parser.add_argument("--bucket", required=True)
+    parser.add_argument("--prefix", default="cancer-model")
+    parser.add_argument("--data-key", required=True, help="S3 key del dataset, ej: data/dataset_cancer.csv")
     parser.add_argument("--min-accuracy", type=float, default=0.60)
     args = parser.parse_args()
 
     np.random.seed(RANDOM_STATE)
-    model_dir = Path(args.model_dir)
-    model_dir.mkdir(parents=True, exist_ok=True)
 
     # --------------------------------------------------------------------------
-    # 1. Carga de datos
+    # 0. Conexion a S3
     # --------------------------------------------------------------------------
-    df = load_data(args.data_path)
+    storage = S3ModelStorage(bucket=args.bucket, prefix=args.prefix)
+
+    # --------------------------------------------------------------------------
+    # 1. Descargar datos desde S3
+    # --------------------------------------------------------------------------
+    local_csv = storage.download_dataset(
+        model_name=args.data_key,
+        local_path="/tmp/dataset_cancer.csv"
+    )
+    df = load_data(local_csv)
 
     # --------------------------------------------------------------------------
     # 2. Preparacion de datos
@@ -276,14 +270,7 @@ def main():
         sys.exit(1)
 
     # --------------------------------------------------------------------------
-    # 7. Serializar modelo
-    # --------------------------------------------------------------------------
-    model_path = model_dir / "modelo_cancer_v1.joblib"
-    joblib.dump(best_model, model_path)
-    logger.info("Modelo guardado: %s", model_path)
-
-    # --------------------------------------------------------------------------
-    # 8. Guardar metricas como JSON
+    # 7. Subir modelo y metricas a S3
     # --------------------------------------------------------------------------
     all_metrics = {
         **metrics,
@@ -291,17 +278,15 @@ def main():
         "best_params": best_params,
         "confusion_matrix": cm
     }
-    metrics_path = model_dir / "metrics.json"
-    with open(metrics_path, "w") as f:
-        json.dump(all_metrics, f, indent=2)
+    storage.save_model(model=best_model, metrics=all_metrics)
 
     # --------------------------------------------------------------------------
-    # 9. Escribir resumen en GitHub Actions
+    # 8. Escribir resumen en GitHub Actions
     # --------------------------------------------------------------------------
     write_github_summary(metrics, cv_metrics, best_params, cm, report)
     set_github_output(metrics)
 
-    logger.info("Reentrenamiento completado")
+    logger.info(f"Reentrenamiento completado — modelo subido a s3://{args.bucket}/%{args.prefix}/")
 
 
 if __name__ == "__main__":
