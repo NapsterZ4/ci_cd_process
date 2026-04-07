@@ -12,6 +12,11 @@ dependencies = [
     "scikit-learn==1.6.1",
     "python-dotenv>=1.2.2",
     "boto3>=1.42.74",
+    "langchain>=1.2.15",
+    "langchain-openai>=1.1.12",
+    "langchain-community>=0.4.1",
+    "langchain-text-splitters>=1.1.1",
+    "faiss-cpu>=1.13.2",
 ]
 
 [tool.setuptools.packages.find]

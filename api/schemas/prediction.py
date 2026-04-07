@@ -13,6 +13,9 @@ class PredictionRequest(BaseModel):
     fumador: int = Field(..., examples=[0])
 
 
+class UserQuestion(BaseModel):
+    question: str
+
 class PredictionResponse(BaseModel):
     prediccion: str
     clase: int
