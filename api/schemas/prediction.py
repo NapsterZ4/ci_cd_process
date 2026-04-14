@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from typing import TypedDict
 
 
 class PredictionRequest(BaseModel):
@@ -19,3 +20,15 @@ class UserQuestion(BaseModel):
 class PredictionResponse(BaseModel):
     prediccion: str
     clase: int
+
+class Consulta(BaseModel):
+    mensaje: str
+    session_id: str = "default"
+
+class Respuesta(BaseModel):
+    mensaje: str
+    agente: str
+
+class Estado(TypedDict):
+    messages: list
+    siguiente: str

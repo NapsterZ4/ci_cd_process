@@ -1,13 +1,17 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from fastapi import status
-from api.schemas.prediction import PredictionRequest, PredictionResponse
+from api.schemas.prediction import PredictionRequest, PredictionResponse, UserQuestion, Consulta, Respuesta
 from api.utilities.s3_storage import S3ModelStorage
 from api.services.model_service import ModelService
-from api.schemas.prediction import UserQuestion
 from api.services.gpt_service import OpenAIClient, EmbeddingService
 from api.utilities.load_files import load_prompt
 from api.services.retriever import Retriever
+from api.agents.agent_system import app
+from langchain_core.messages import HumanMessage
+
+
+sesiones: dict[str, list] = {}
 
 
 router = APIRouter(prefix="/predict", tags=["Prediccion"])
@@ -70,5 +74,23 @@ def gpt(request: UserQuestion) -> JSONResponse:
             "query_embedding": embed_query,
             "context_embedding": embed_context,
             "similarity": similarity
+        }
+    )
+
+@router.post("/agent")
+async def agent(consulta: Consulta):
+    historial = sesiones.get(consulta.session_id, [])
+    historial.append(HumanMessage(content=consulta.mensaje))
+    resultado = app.invoke({
+        "messages": historial,
+        "siguiente": "",
+    })
+    sesiones[consulta.session_id] = resultado["messages"]
+    respuesta_final = resultado["messages"][-1].content
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "mensaje": consulta.mensaje,
+            "respuesta": respuesta_final
         }
     )
